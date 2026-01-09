@@ -1,98 +1,99 @@
+require('dotenv').config();
 const express = require("express");
 const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
 const FormData = require("form-data");
 
 const app = express();
+app.use(express.json());
 
-// ===== CONFIG =====
-const TARGET_URL = "https://url-shortener.me/726T";
-const DISCORD_WEBHOOK = "https://discord.com/api/webhooks/1459229880221700375/esk71z4kmwuwYOLByflofkjZra-deSo82CK0UogimXJbp0QKB13MLQ4wP3mm-yFrw6rj";
-// ==================
+const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
+if (!DISCORD_WEBHOOK) {
+  console.error("❌ DISCORD_WEBHOOK environment variable not set!");
+  process.exit(1);
+}
 
+// Helper: scroll the page to load lazy content
+async function autoScroll(page, scrollDelay = 150, maxScrolls = 20) {
+  await page.evaluate(async (scrollDelay, maxScrolls) => {
+    await new Promise((resolve) => {
+      let totalHeight = 0;
+      let scrolls = 0;
+      const distance = 300;
+      const timer = setInterval(() => {
+        window.scrollBy(0, distance);
+        totalHeight += distance;
+        scrolls++;
+        if (scrolls >= maxScrolls || totalHeight >= document.body.scrollHeight) {
+          clearInterval(timer);
+          resolve();
+        }
+      }, scrollDelay);
+    });
+  }, scrollDelay, maxScrolls);
+}
+
+// Endpoint: /send?url=...
 app.get("/send", async (req, res) => {
-  try {
-    // 1️⃣ Show simple white screen in browser
-    res.send(`
-      <html>
-        <head>
-          <title>Loading...</title>
-          <style>body{background:white;margin:0;padding:0;}</style>
-        </head>
-        <body></body>
-      </html>
-    `);
+  const targetUrl = req.query.url || "https://url-shortener.me/726T";
 
-    // 2️⃣ Run scraper in background
+  // 1️⃣ Send white screen immediately
+  res.send(`
+    <html>
+      <head>
+        <title>Loading...</title>
+        <style>
+          body {background:white; margin:0; padding:0;}
+        </style>
+      </head>
+      <body></body>
+    </html>
+  `);
+
+  console.log(`🔹 Scraping started for URL: ${targetUrl}`);
+
+  try {
     const browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
       headless: true,
+      args: ["--no-sandbox", "--disable-setuid-sandbox"]
     });
     const page = await browser.newPage();
-    await page.goto(TARGET_URL, { waitUntil: "networkidle2" });
+    await page.goto(targetUrl, { waitUntil: "networkidle2" });
 
-    // Scroll down to load all content (for lazy-loading pages)
+    // Scroll to load all lazy content
     await autoScroll(page);
 
-    // Grab all visible text
-    const visibleText = await page.evaluate(() => {
-      const elements = Array.from(document.body.querySelectorAll("*"));
-      return elements
-        .filter(el => {
-          const style = window.getComputedStyle(el);
-          return style && style.display !== "none" && style.visibility !== "hidden" && el.offsetHeight > 0;
-        })
-        .map(el => el.innerText)
-        .filter(text => text.trim().length > 0)
-        .join("\n");
-    });
+    // Extract all visible text
+    const visibleText = await page.evaluate(() => document.body.innerText);
 
     // Take full-page screenshot
     const screenshotBuffer = await page.screenshot({ fullPage: true });
 
     await browser.close();
 
-    // 3️⃣ Send visible text to Discord in chunks
-    for (let i = 0; i < visibleText.length; i += 1900) {
-      const chunk = visibleText.slice(i, i + 1900);
-      await fetch(DISCORD_WEBHOOK, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: "```" + chunk + "```" }),
-      });
-    }
+    console.log(`🔹 Sending text and screenshot to Discord...`);
 
-    // 4️⃣ Send screenshot to Discord
+    // Send to Discord in one message with screenshot
     const form = new FormData();
     form.append("file", screenshotBuffer, "screenshot.png");
+
+    const textChunk = visibleText.length > 1800
+      ? visibleText.slice(0, 1800) + "…(truncated)"
+      : visibleText;
+
+    form.append("payload_json", JSON.stringify({
+      content: `**Scraped URL:** ${targetUrl}\n**Visible Text:**\n\`\`\`\n${textChunk}\n\`\`\``
+    }));
+
     await fetch(DISCORD_WEBHOOK, { method: "POST", body: form });
-    
-    console.log("Text + Screenshot sent successfully!");
+
+    console.log(`✅ Successfully sent to Discord for ${targetUrl}`);
   } catch (err) {
-    console.error("Error:", err);
+    console.error("❌ Error scraping/sending:", err);
   }
 });
 
-// Helper function to auto-scroll
-async function autoScroll(page) {
-  await page.evaluate(async () => {
-    await new Promise((resolve) => {
-      let totalHeight = 0;
-      const distance = 200;
-      const timer = setInterval(() => {
-        const scrollHeight = document.body.scrollHeight;
-        window.scrollBy(0, distance);
-        totalHeight += distance;
-        if (totalHeight >= scrollHeight) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, 100);
-    });
-  });
-}
-
-app.get("/", (req, res) => res.send("Visible Text + Screenshot Scraper API running"));
+app.get("/", (req, res) => res.send("Professional Scraper API running"));
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on port", PORT));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
