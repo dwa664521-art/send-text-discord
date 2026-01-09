@@ -1,4 +1,4 @@
-require('dotenv').config();
+require("dotenv").config();
 const express = require("express");
 const puppeteer = require("puppeteer");
 const fetch = require("node-fetch");
@@ -7,93 +7,118 @@ const FormData = require("form-data");
 const app = express();
 app.use(express.json());
 
+// ===== CONFIG =====
 const DISCORD_WEBHOOK = process.env.DISCORD_WEBHOOK;
 if (!DISCORD_WEBHOOK) {
-  console.error("❌ DISCORD_WEBHOOK environment variable not set!");
+  console.error("❌ DISCORD_WEBHOOK is not set in .env!");
   process.exit(1);
 }
 
-// Helper: scroll the page to load lazy content
-async function autoScroll(page, scrollDelay = 150, maxScrolls = 20) {
-  await page.evaluate(async (scrollDelay, maxScrolls) => {
-    await new Promise((resolve) => {
-      let totalHeight = 0;
-      let scrolls = 0;
-      const distance = 300;
-      const timer = setInterval(() => {
-        window.scrollBy(0, distance);
-        totalHeight += distance;
-        scrolls++;
-        if (scrolls >= maxScrolls || totalHeight >= document.body.scrollHeight) {
-          clearInterval(timer);
-          resolve();
-        }
-      }, scrollDelay);
-    });
-  }, scrollDelay, maxScrolls);
-}
+// Optional: take screenshot (true/false)
+const TAKE_SCREENSHOT = false;
 
-// Endpoint: /send?url=...
-app.get("/send", async (req, res) => {
-  const targetUrl = req.query.url || "https://myaccount.google.com/personal-info";
+// Max scrolls for lazy loading
+const MAX_SCROLLS = 50;
 
-  // 1️⃣ Send white screen immediately
-  res.send(`
-    <html>
-      <head>
-        <title>Loading...</title>
-        <style>
-          body {background:white; margin:0; padding:0;}
-        </style>
-      </head>
-      <body></body>
-    </html>
-  `);
+// Scroll delay in ms
+const SCROLL_DELAY = 100;
 
-  console.log(`🔹 Scraping started for URL: ${targetUrl}`);
+// ------------------
+
+async function scrapePage(url) {
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: ["--no-sandbox", "--disable-setuid-sandbox"],
+  });
+  const page = await browser.newPage();
 
   try {
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"]
-    });
-    const page = await browser.newPage();
-    await page.goto(targetUrl, { waitUntil: "networkidle2" });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
 
-    // Scroll to load all lazy content
+    // Scroll page to load lazy content
     await autoScroll(page);
 
-    // Extract all visible text
+    // Grab all visible text
     const visibleText = await page.evaluate(() => document.body.innerText);
 
-    // Take full-page screenshot
-    const screenshotBuffer = await page.screenshot({ fullPage: true });
+    // Optional screenshot
+    let screenshotBuffer = null;
+    if (TAKE_SCREENSHOT) {
+      screenshotBuffer = await page.screenshot({ fullPage: true });
+    }
 
     await browser.close();
+    return { visibleText, screenshotBuffer };
+  } catch (err) {
+    await browser.close();
+    throw err;
+  }
+}
 
-    console.log(`🔹 Sending text and screenshot to Discord...`);
+// Auto scroll function
+async function autoScroll(page) {
+  await page.evaluate(
+    async (scrollDelay, maxScrolls) => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let scrolls = 0;
+        const distance = 300;
+        const timer = setInterval(() => {
+          window.scrollBy(0, distance);
+          totalHeight += distance;
+          scrolls++;
+          if (scrolls >= maxScrolls || totalHeight >= document.body.scrollHeight) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, scrollDelay);
+      });
+    },
+    SCROLL_DELAY,
+    MAX_SCROLLS
+  );
+}
 
-    // Send to Discord in one message with screenshot
+// Send data to Discord
+async function sendToDiscord(text, screenshotBuffer, url) {
+  try {
     const form = new FormData();
-    form.append("file", screenshotBuffer, "screenshot.png");
+    if (screenshotBuffer) form.append("file", screenshotBuffer, "screenshot.png");
 
-    const textChunk = visibleText.length > 1800
-      ? visibleText.slice(0, 1800) + "…(truncated)"
-      : visibleText;
+    const chunkText = text.length > 1800 ? text.slice(0, 1800) + "\n...(truncated)" : text;
 
-    form.append("payload_json", JSON.stringify({
-      content: `**Scraped URL:** ${targetUrl}\n**Visible Text:**\n\`\`\`\n${textChunk}\n\`\`\``
-    }));
+    form.append(
+      "payload_json",
+      JSON.stringify({
+        content: `**Scraped URL:** ${url}\n**Visible Text:**\n\`\`\`\n${chunkText}\n\`\`\``,
+      })
+    );
 
     await fetch(DISCORD_WEBHOOK, { method: "POST", body: form });
-
-    console.log(`✅ Successfully sent to Discord for ${targetUrl}`);
   } catch (err) {
-    console.error("❌ Error scraping/sending:", err);
+    console.error("❌ Failed to send to Discord:", err);
+  }
+}
+
+// Endpoint: /send?url=<any URL>
+app.get("/send", async (req, res) => {
+  const url = req.query.url;
+  if (!url) return res.status(400).send("❌ Error: URL query parameter is required: /send?url=...");
+
+  // Send white screen immediately
+  res.send(`<html><body style="background:white;"></body></html>`);
+
+  console.log(`🔹 Scraping URL: ${url}`);
+  try {
+    const { visibleText, screenshotBuffer } = await scrapePage(url);
+    await sendToDiscord(visibleText, screenshotBuffer, url);
+    console.log(`✅ Scrape complete for ${url}`);
+  } catch (err) {
+    console.error("❌ Scrape failed:", err);
   }
 });
 
-app.get("/", (req, res) => res.send("Professional Scraper API running"));
+app.get("/", (req, res) => res.send("🔹 Bulletproof Scraper API Running"));
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
