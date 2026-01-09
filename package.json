@@ -1,7 +1,7 @@
 {
-  "name": "send-text-discord",
+  "name": "scraper-discord",
   "version": "1.0.0",
-  "description": "Fetch a URL and send text to Discord webhook",
+  "description": "Scrape elements from a page and send to Discord webhook",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -9,7 +9,8 @@
   "dependencies": {
     "express": "^4.18.2",
     "node-fetch": "^2.6.7",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "jsdom": "^22.1.0"
   },
   "engines": {
     "node": "18.x"
