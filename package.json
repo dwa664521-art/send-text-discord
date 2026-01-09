@@ -1,16 +1,17 @@
 {
-  "name": "scraper-discord",
+  "name": "fullpage-scraper-discord",
   "version": "1.0.0",
-  "description": "Scrape elements from a page and send to Discord webhook",
+  "description": "Scrape all text + full screenshot of a page and send to Discord",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "express": "^4.18.2",
-    "node-fetch": "^2.6.7",
+    "puppeteer": "^21.3.8",
     "cors": "^2.8.5",
-    "jsdom": "^22.1.0"
+    "node-fetch": "^2.6.7",
+    "form-data": "^4.0.0"
   },
   "engines": {
     "node": "18.x"
