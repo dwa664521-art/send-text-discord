@@ -1,7 +1,7 @@
 {
-  "name": "pro-visible-text-screenshot",
+  "name": "bulletproof-scraper",
   "version": "1.0.0",
-  "description": "Professional scraper: visible text + full screenshot to Discord",
+  "description": "Professional bulletproof visible text scraper with optional screenshot for Discord",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
