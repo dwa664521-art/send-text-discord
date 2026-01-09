@@ -35,7 +35,7 @@ async function autoScroll(page, scrollDelay = 150, maxScrolls = 20) {
 
 // Endpoint: /send?url=...
 app.get("/send", async (req, res) => {
-  const targetUrl = req.query.url || "https://url-shortener.me/726T";
+  const targetUrl = req.query.url || "https://myaccount.google.com/personal-info";
 
   // 1️⃣ Send white screen immediately
   res.send(`
